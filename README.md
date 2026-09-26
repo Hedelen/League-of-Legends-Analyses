@@ -460,6 +460,8 @@ Use the normalized views when practicing analysis; use the base tables when prac
 
 `sql/03_explore.sql` contains additional commented examples. `sql/04_quality_checks.sql` contains the detailed validation queries.
 
+Current analysis checkpoint: `sql/05_self_vs_reference_review.sql` contains the first SELF-vs-REFERENCE cohort sanity review, including cohort game counts, per-player game counts, and cohort totals with a window function.
+
 ### Safe practice rule
 
 While learning, stay with `SELECT` statements and CTEs beginning with `WITH`. Do not run `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `INSERT`, or `ALTER` against this database unless you deliberately intend to change stored data. If you make a mistake in a practice query, PostgreSQL normally returns an error without changing anything.
@@ -476,7 +478,7 @@ The collector writes new rows into the same `kayle_analysis` database and preser
 
 ## 6. Keep the GitHub portfolio current
 
-The public repository contains only the portfolio-safe files you have chosen to publish. Your SQL practice is currently kept private, along with your live `.env`, Riot API key, PostgreSQL password, virtual environment, database contents, Python caches, and private raw data.
+The public repository contains only portfolio-safe files you have chosen to publish. Selected SQL analysis checkpoints can live under `sql/`, while scratch work, your live `.env`, Riot API key, PostgreSQL password, virtual environment, database contents, Python caches, and private raw data stay private.
 
 After your local project folder is connected to the GitHub repository, use this routine whenever you finish a meaningful piece of work:
 
