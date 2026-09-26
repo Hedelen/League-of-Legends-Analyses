@@ -1002,6 +1002,20 @@ CREATE TABLE IF NOT EXISTS pipeline_internal.player_scan_checkpoints (
     PRIMARY KEY (puuid, scan_kind)
 );
 
+-- Seed the new cross-run checkpoint from the newest already-collected SELF game.
+-- A later scan advances it to the newest Ranked Solo match, including non-Kayle games.
+INSERT INTO pipeline_internal.player_scan_checkpoints
+    (puuid, scan_kind, newest_match_id)
+SELECT DISTINCT ON (t.puuid)
+    t.puuid,
+    'SELF_RANKED_SOLO',
+    t.match_id
+FROM target_player_matches AS t
+JOIN matches AS m USING (match_id)
+WHERE t.cohort_type='SELF'
+ORDER BY t.puuid, m.game_start DESC NULLS LAST, t.match_id DESC
+ON CONFLICT (puuid, scan_kind) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS pipeline_internal.collection_tasks (
     task_id BIGSERIAL PRIMARY KEY,
     run_id BIGINT NOT NULL REFERENCES collection_runs(run_id) ON DELETE CASCADE,
