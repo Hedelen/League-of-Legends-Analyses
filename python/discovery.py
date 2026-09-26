@@ -157,17 +157,18 @@ def _save_evaluation(conn: Any, row: dict[str, Any]) -> None:
     )
     qualifying_match_ids = list(row.get("qualifying_match_ids") or [])
     if qualifying_match_ids:
-        conn.executemany(
-            """
-            INSERT INTO candidate_qualifying_matches
-              (run_id, puuid, match_order, match_id)
-            VALUES (%s,%s,%s,%s)
-            """,
-            [
-                (row["run_id"], row["puuid"], index, match_id)
-                for index, match_id in enumerate(qualifying_match_ids)
-            ],
-        )
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO candidate_qualifying_matches
+                  (run_id, puuid, match_order, match_id)
+                VALUES (%s,%s,%s,%s)
+                """,
+                [
+                    (row["run_id"], row["puuid"], index, match_id)
+                    for index, match_id in enumerate(qualifying_match_ids)
+                ],
+            )
     conn.commit()
 
 
