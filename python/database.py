@@ -76,22 +76,23 @@ def start_run(conn: psycopg.Connection, window: Any, settings: Any) -> int:
         (window.current,),
     ).fetchone()
     run_id = int(row["run_id"])
-    conn.executemany(
-        """
-        INSERT INTO collection_run_patches (run_id, patch_order, patch)
-        VALUES (%s,%s,%s)
-        ON CONFLICT (run_id, patch_order) DO UPDATE SET patch=EXCLUDED.patch
-        """,
-        [(run_id, index, patch) for index, patch in enumerate(window.patches)],
-    )
-    conn.executemany(
-        """
-        INSERT INTO collection_run_source_versions (run_id, version_order, source_version)
-        VALUES (%s,%s,%s)
-        ON CONFLICT (run_id, version_order) DO UPDATE SET source_version=EXCLUDED.source_version
-        """,
-        [(run_id, index, version) for index, version in enumerate(window.source_versions)],
-    )
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO collection_run_patches (run_id, patch_order, patch)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (run_id, patch_order) DO UPDATE SET patch=EXCLUDED.patch
+            """,
+            [(run_id, index, patch) for index, patch in enumerate(window.patches)],
+        )
+        cur.executemany(
+            """
+            INSERT INTO collection_run_source_versions (run_id, version_order, source_version)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (run_id, version_order) DO UPDATE SET source_version=EXCLUDED.source_version
+            """,
+            [(run_id, index, version) for index, version in enumerate(window.source_versions)],
+        )
     setting_rows: list[tuple[int, str, int, str | None]] = []
     for setting_name, value in asdict(settings).items():
         if setting_name in {"api_key", "postgres_dsn"}:
@@ -102,16 +103,17 @@ def start_run(conn: psycopg.Connection, window: Any, settings: Any) -> int:
                 item = "#".join(str(part) for part in item)
             setting_rows.append((run_id, setting_name, value_index, None if item is None else str(item)))
     if setting_rows:
-        conn.executemany(
-            """
-            INSERT INTO collection_run_settings
-              (run_id, setting_name, value_index, setting_value)
-            VALUES (%s,%s,%s,%s)
-            ON CONFLICT (run_id, setting_name, value_index) DO UPDATE SET
-              setting_value=EXCLUDED.setting_value
-            """,
-            setting_rows,
-        )
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO collection_run_settings
+                  (run_id, setting_name, value_index, setting_value)
+                VALUES (%s,%s,%s,%s)
+                ON CONFLICT (run_id, setting_name, value_index) DO UPDATE SET
+                  setting_value=EXCLUDED.setting_value
+                """,
+                setting_rows,
+            )
     conn.commit()
     return run_id
 
@@ -313,17 +315,18 @@ def add_experience_check(
         (run_id, puuid),
     )
     if details:
-        conn.executemany(
-            """
-            INSERT INTO account_experience_details
-              (run_id, puuid, detail_name, detail_value)
-            VALUES (%s,%s,%s,%s)
-            """,
-            [
-                (run_id, puuid, key, None if value is None else str(value))
-                for key, value in details.items()
-            ],
-        )
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO account_experience_details
+                  (run_id, puuid, detail_name, detail_value)
+                VALUES (%s,%s,%s,%s)
+                """,
+                [
+                    (run_id, puuid, key, None if value is None else str(value))
+                    for key, value in details.items()
+                ],
+            )
 
 
 def cache_get(conn: psycopg.Connection, endpoint: str, key: str) -> Any | None:
