@@ -383,16 +383,21 @@ def _bulk_upsert(
         return
     columns = list(rows[0])
     updates = [c for c in columns if c not in key_columns]
-    query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) DO UPDATE SET {}").format(
+    query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) ON CONFLICT ({}) ").format(
         sql.Identifier(*table.split(".")),
         sql.SQL(",").join(map(sql.Identifier, columns)),
         sql.SQL(",").join(sql.Placeholder() for _ in columns),
         sql.SQL(",").join(map(sql.Identifier, key_columns)),
-        sql.SQL(",").join(
+    )
+    if updates:
+        query += sql.SQL("DO UPDATE SET {} ").format(sql.SQL(",").join(
             sql.SQL("{}=EXCLUDED.{}").format(sql.Identifier(c), sql.Identifier(c))
             for c in updates
-        ),
-    )
+        ))
+    else:
+        # Link tables such as timeline_event_assists contain only their key.
+        # Re-collecting the same relationship should therefore be a no-op.
+        query += sql.SQL("DO NOTHING")
     values = [
         tuple(_json(row[c]) if c in json_columns else row[c] for c in columns)
         for row in rows
