@@ -406,6 +406,136 @@ def _bulk_upsert(
         cur.executemany(query, values)
 
 
+def _insert_lookup_placeholders(
+    conn: psycopg.Connection,
+    table: str,
+    id_column: str,
+    name_column: str,
+    values: set[int],
+    label: str,
+) -> None:
+    """Keep future Match-V5 codes loadable until static metadata is refreshed."""
+    rows = sorted(value for value in values if value is not None)
+    if not rows:
+        return
+    query = sql.SQL(
+        "INSERT INTO {} ({}, {}, lookup_source) VALUES (%s,%s,'PLACEHOLDER') "
+        "ON CONFLICT ({}) DO NOTHING"
+    ).format(
+        sql.Identifier(table),
+        sql.Identifier(id_column),
+        sql.Identifier(name_column),
+        sql.Identifier(id_column),
+    )
+    with conn.cursor() as cur:
+        cur.executemany(query, [(value, f"Unmapped {label} ID {value}") for value in rows])
+
+
+def _ensure_match_lookup_keys(
+    conn: psycopg.Connection,
+    match: dict[str, Any],
+    timeline: dict[str, Any] | None,
+) -> None:
+    """Create non-destructive placeholders before facts enforce lookup FKs."""
+    info = match.get("info") or {}
+    participants = info.get("participants") or []
+    teams = info.get("teams") or []
+    frames = (timeline or {}).get("info", {}).get("frames") or []
+    events = [event for frame in frames for event in (frame.get("events") or [])]
+
+    champion_ids = {
+        int(row.get("championId"))
+        for row in participants
+        if row.get("championId") is not None
+    }
+    champion_ids.update(
+        int(ban.get("championId"))
+        for team in teams
+        for ban in (team.get("bans") or [])
+        if ban.get("championId") is not None
+    )
+    item_ids = {
+        int(row.get(f"item{slot}"))
+        for row in participants
+        for slot in range(7)
+        if row.get(f"item{slot}") is not None
+    }
+    for event in events:
+        item_ids.update(
+            int(event[key])
+            for key in ("itemId", "beforeId", "afterId")
+            if event.get(key) is not None
+        )
+    spell_ids = {
+        int(row[key])
+        for row in participants
+        for key in ("summoner1Id", "summoner2Id")
+        if row.get(key) is not None
+    }
+    style_ids: set[int] = set()
+    perk_ids: set[int] = set()
+    stat_ids: set[int] = set()
+    for row in participants:
+        perks = row.get("perks") or {}
+        stat_perks = perks.get("statPerks") or {}
+        stat_ids.update(
+            int(value) for value in stat_perks.values() if value is not None
+        )
+        for style in perks.get("styles") or []:
+            if style.get("style") is not None:
+                style_ids.add(int(style["style"]))
+            perk_ids.update(
+                int(selection["perk"])
+                for selection in (style.get("selections") or [])
+                if selection.get("perk") is not None
+            )
+
+    _insert_lookup_placeholders(
+        conn, "queue_catalog", "queue_id", "queue_description",
+        {int(info["queueId"])} if info.get("queueId") is not None else set(), "queue",
+    )
+    _insert_lookup_placeholders(
+        conn, "map_catalog", "map_id", "map_name",
+        {int(info["mapId"])} if info.get("mapId") is not None else set(), "map",
+    )
+    _insert_lookup_placeholders(
+        conn, "champion_catalog", "champion_id", "champion_name", champion_ids, "champion",
+    )
+    _insert_lookup_placeholders(
+        conn, "item_catalog", "item_id", "item_name", item_ids, "item",
+    )
+    _insert_lookup_placeholders(
+        conn, "summoner_spell_catalog", "summoner_spell_id", "spell_name",
+        spell_ids, "summoner spell",
+    )
+    _insert_lookup_placeholders(
+        conn, "rune_style_catalog", "style_id", "style_name", style_ids, "rune style",
+    )
+    _insert_lookup_placeholders(
+        conn, "perk_catalog", "perk_id", "perk_name", perk_ids, "perk",
+    )
+    _insert_lookup_placeholders(
+        conn, "stat_perk_catalog", "stat_perk_id", "stat_perk_name",
+        stat_ids, "stat shard",
+    )
+    _insert_lookup_placeholders(
+        conn, "team_side_catalog", "team_id", "team_side_name",
+        {
+            int(value)
+            for value in [*(team.get("teamId") for team in teams),
+                          *(row.get("teamId") for row in participants),
+                          *(event.get("teamId") for event in events)]
+            if value is not None
+        },
+        "team",
+    )
+    _insert_lookup_placeholders(
+        conn, "skill_slot_catalog", "skill_slot", "skill_name",
+        {int(event["skillSlot"]) for event in events if event.get("skillSlot") is not None},
+        "skill slot",
+    )
+
+
 def store_match_bundle(
     conn: psycopg.Connection,
     match: dict[str, Any],
@@ -417,6 +547,7 @@ def store_match_bundle(
     match_id = match_row.pop("match_id")
     raw_match = match_row.pop("raw_match")
     with conn.transaction():
+        _ensure_match_lookup_keys(conn, match, timeline)
         for p in match.get("info", {}).get("participants", []):
             puuid = p.get("puuid")
             if puuid:

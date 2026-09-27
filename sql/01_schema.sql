@@ -1075,6 +1075,313 @@ END $$;
 
 ALTER TABLE quality_results DROP COLUMN IF EXISTS details;
 
+-- Human-readable dictionaries for Riot/Data Dragon numeric codes. These are
+-- ordinary relational dimensions, not views or nested JSON. Placeholder rows
+-- preserve every already-collected ID until refresh-lookups supplies its name.
+CREATE TABLE IF NOT EXISTS champion_catalog (
+    champion_id INTEGER PRIMARY KEY,
+    champion_key TEXT,
+    champion_name TEXT NOT NULL,
+    champion_title TEXT,
+    data_dragon_version TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS item_catalog (
+    item_id INTEGER PRIMARY KEY,
+    item_name TEXT NOT NULL,
+    description TEXT,
+    plaintext TEXT,
+    gold_total INTEGER,
+    purchasable BOOLEAN,
+    data_dragon_version TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS summoner_spell_catalog (
+    summoner_spell_id INTEGER PRIMARY KEY,
+    spell_key TEXT,
+    spell_name TEXT NOT NULL,
+    description TEXT,
+    cooldown_seconds NUMERIC,
+    required_level INTEGER,
+    data_dragon_version TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS rune_style_catalog (
+    style_id INTEGER PRIMARY KEY,
+    style_key TEXT,
+    style_name TEXT NOT NULL,
+    icon_path TEXT,
+    data_dragon_version TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS perk_catalog (
+    perk_id INTEGER PRIMARY KEY,
+    perk_key TEXT,
+    perk_name TEXT NOT NULL,
+    short_description TEXT,
+    long_description TEXT,
+    style_id INTEGER REFERENCES rune_style_catalog(style_id),
+    slot_index INTEGER,
+    is_keystone BOOLEAN NOT NULL DEFAULT false,
+    icon_path TEXT,
+    data_dragon_version TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS stat_perk_catalog (
+    stat_perk_id INTEGER PRIMARY KEY,
+    stat_perk_name TEXT NOT NULL,
+    shard_row TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'RIOT_MATCH_V5_CODEBOOK',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS queue_catalog (
+    queue_id INTEGER PRIMARY KEY,
+    map_name TEXT,
+    queue_description TEXT NOT NULL,
+    notes TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS map_catalog (
+    map_id INTEGER PRIMARY KEY,
+    map_name TEXT NOT NULL,
+    notes TEXT,
+    lookup_source TEXT NOT NULL DEFAULT 'PLACEHOLDER',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS team_side_catalog (
+    team_id INTEGER PRIMARY KEY,
+    team_side_name TEXT NOT NULL,
+    lookup_source TEXT NOT NULL DEFAULT 'BUILT_IN'
+);
+
+CREATE TABLE IF NOT EXISTS skill_slot_catalog (
+    skill_slot INTEGER PRIMARY KEY,
+    skill_name TEXT NOT NULL,
+    lookup_source TEXT NOT NULL DEFAULT 'BUILT_IN'
+);
+
+INSERT INTO champion_catalog (champion_id, champion_key, champion_name, lookup_source)
+VALUES (-1, 'NO_BAN', 'No ban', 'BUILT_IN'),
+       (0, 'NONE', 'No champion', 'BUILT_IN'),
+       (10, 'Kayle', 'Kayle', 'BUILT_IN')
+ON CONFLICT (champion_id) DO NOTHING;
+
+INSERT INTO item_catalog (item_id, item_name, lookup_source)
+VALUES (0, 'Empty item slot / no item', 'BUILT_IN')
+ON CONFLICT (item_id) DO UPDATE SET
+    item_name=EXCLUDED.item_name,
+    lookup_source=EXCLUDED.lookup_source,
+    updated_at=now();
+
+INSERT INTO summoner_spell_catalog (summoner_spell_id, spell_key, spell_name, lookup_source)
+VALUES (0, 'NONE', 'No summoner spell', 'BUILT_IN')
+ON CONFLICT (summoner_spell_id) DO NOTHING;
+
+INSERT INTO stat_perk_catalog (stat_perk_id, stat_perk_name, shard_row) VALUES
+    (5001, 'Scaling Health', 'FLEX_OR_DEFENSE'),
+    (5002, 'Armor', 'LEGACY_DEFENSE'),
+    (5003, 'Magic Resist', 'LEGACY_DEFENSE'),
+    (5005, 'Attack Speed', 'OFFENSE'),
+    (5007, 'Ability Haste', 'OFFENSE'),
+    (5008, 'Adaptive Force', 'OFFENSE_OR_FLEX'),
+    (5010, 'Movement Speed', 'FLEX'),
+    (5011, 'Health', 'DEFENSE'),
+    (5013, 'Tenacity and Slow Resist', 'DEFENSE')
+ON CONFLICT (stat_perk_id) DO UPDATE SET
+    stat_perk_name=EXCLUDED.stat_perk_name,
+    shard_row=EXCLUDED.shard_row,
+    updated_at=now();
+
+INSERT INTO team_side_catalog (team_id, team_side_name) VALUES
+    (100, 'Blue side'),
+    (200, 'Red side')
+ON CONFLICT (team_id) DO UPDATE SET team_side_name=EXCLUDED.team_side_name;
+
+INSERT INTO skill_slot_catalog (skill_slot, skill_name) VALUES
+    (0, 'Unknown / no skill'),
+    (1, 'Q'),
+    (2, 'W'),
+    (3, 'E'),
+    (4, 'R')
+ON CONFLICT (skill_slot) DO UPDATE SET skill_name=EXCLUDED.skill_name;
+
+-- Cover every historical/current code before foreign keys are added. The
+-- refresh-lookups command replaces these labels wherever Riot publishes one.
+INSERT INTO champion_catalog (champion_id, champion_name)
+SELECT id, 'Unmapped champion ID ' || id
+FROM (
+    SELECT champion_id AS id FROM participants
+    UNION SELECT champion_id FROM team_bans
+    UNION SELECT champion_id FROM champion_mastery_snapshots
+) AS observed
+WHERE id IS NOT NULL
+ON CONFLICT (champion_id) DO NOTHING;
+
+INSERT INTO item_catalog (item_id, item_name)
+SELECT id, 'Unmapped item ID ' || id
+FROM (
+    SELECT item_id AS id FROM participant_items
+    UNION SELECT item_id FROM timeline_events
+    UNION SELECT before_id FROM timeline_events
+    UNION SELECT after_id FROM timeline_events
+) AS observed
+WHERE id IS NOT NULL
+ON CONFLICT (item_id) DO NOTHING;
+
+INSERT INTO summoner_spell_catalog (summoner_spell_id, spell_name)
+SELECT id, 'Unmapped summoner spell ID ' || id
+FROM (
+    SELECT summoner_spell_1 AS id FROM participants
+    UNION SELECT summoner_spell_2 FROM participants
+) AS observed
+WHERE id IS NOT NULL
+ON CONFLICT (summoner_spell_id) DO NOTHING;
+
+INSERT INTO rune_style_catalog (style_id, style_name)
+SELECT DISTINCT style_id, 'Unmapped rune style ID ' || style_id
+FROM participant_perk_styles
+WHERE style_id IS NOT NULL
+ON CONFLICT (style_id) DO NOTHING;
+
+INSERT INTO perk_catalog (perk_id, perk_name)
+SELECT DISTINCT perk_id, 'Unmapped perk ID ' || perk_id
+FROM participant_perk_selections
+WHERE perk_id IS NOT NULL
+ON CONFLICT (perk_id) DO NOTHING;
+
+INSERT INTO stat_perk_catalog (stat_perk_id, stat_perk_name, shard_row, lookup_source)
+SELECT id, 'Unmapped stat shard ID ' || id, 'UNKNOWN', 'PLACEHOLDER'
+FROM (
+    SELECT offense_perk_id AS id FROM participant_perk_stats
+    UNION SELECT flex_perk_id FROM participant_perk_stats
+    UNION SELECT defense_perk_id FROM participant_perk_stats
+) AS observed
+WHERE id IS NOT NULL
+ON CONFLICT (stat_perk_id) DO NOTHING;
+
+INSERT INTO queue_catalog (queue_id, queue_description)
+SELECT DISTINCT queue_id, 'Unmapped queue ID ' || queue_id
+FROM matches WHERE queue_id IS NOT NULL
+ON CONFLICT (queue_id) DO NOTHING;
+
+INSERT INTO map_catalog (map_id, map_name)
+SELECT DISTINCT map_id, 'Unmapped map ID ' || map_id
+FROM matches WHERE map_id IS NOT NULL
+ON CONFLICT (map_id) DO NOTHING;
+
+INSERT INTO team_side_catalog (team_id, team_side_name, lookup_source)
+SELECT id, 'Unmapped team ID ' || id, 'PLACEHOLDER'
+FROM (
+    SELECT team_id AS id FROM teams
+    UNION SELECT team_id FROM participants
+    UNION SELECT team_id FROM timeline_events
+) AS observed
+WHERE id IS NOT NULL
+ON CONFLICT (team_id) DO NOTHING;
+
+INSERT INTO skill_slot_catalog (skill_slot, skill_name, lookup_source)
+SELECT DISTINCT skill_slot, 'Unmapped skill slot ' || skill_slot, 'PLACEHOLDER'
+FROM timeline_events WHERE skill_slot IS NOT NULL
+ON CONFLICT (skill_slot) DO NOTHING;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_mastery_champion_catalog') THEN
+        ALTER TABLE champion_mastery_snapshots ADD CONSTRAINT fk_mastery_champion_catalog
+            FOREIGN KEY (champion_id) REFERENCES champion_catalog(champion_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_matches_queue_catalog') THEN
+        ALTER TABLE matches ADD CONSTRAINT fk_matches_queue_catalog
+            FOREIGN KEY (queue_id) REFERENCES queue_catalog(queue_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_matches_map_catalog') THEN
+        ALTER TABLE matches ADD CONSTRAINT fk_matches_map_catalog
+            FOREIGN KEY (map_id) REFERENCES map_catalog(map_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_teams_side_catalog') THEN
+        ALTER TABLE teams ADD CONSTRAINT fk_teams_side_catalog
+            FOREIGN KEY (team_id) REFERENCES team_side_catalog(team_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_bans_champion_catalog') THEN
+        ALTER TABLE team_bans ADD CONSTRAINT fk_bans_champion_catalog
+            FOREIGN KEY (champion_id) REFERENCES champion_catalog(champion_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_participants_team_side_catalog') THEN
+        ALTER TABLE participants ADD CONSTRAINT fk_participants_team_side_catalog
+            FOREIGN KEY (team_id) REFERENCES team_side_catalog(team_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_participants_champion_catalog') THEN
+        ALTER TABLE participants ADD CONSTRAINT fk_participants_champion_catalog
+            FOREIGN KEY (champion_id) REFERENCES champion_catalog(champion_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_participants_spell1_catalog') THEN
+        ALTER TABLE participants ADD CONSTRAINT fk_participants_spell1_catalog
+            FOREIGN KEY (summoner_spell_1) REFERENCES summoner_spell_catalog(summoner_spell_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_participants_spell2_catalog') THEN
+        ALTER TABLE participants ADD CONSTRAINT fk_participants_spell2_catalog
+            FOREIGN KEY (summoner_spell_2) REFERENCES summoner_spell_catalog(summoner_spell_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_participant_items_catalog') THEN
+        ALTER TABLE participant_items ADD CONSTRAINT fk_participant_items_catalog
+            FOREIGN KEY (item_id) REFERENCES item_catalog(item_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_perk_stats_offense_catalog') THEN
+        ALTER TABLE participant_perk_stats ADD CONSTRAINT fk_perk_stats_offense_catalog
+            FOREIGN KEY (offense_perk_id) REFERENCES stat_perk_catalog(stat_perk_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_perk_stats_flex_catalog') THEN
+        ALTER TABLE participant_perk_stats ADD CONSTRAINT fk_perk_stats_flex_catalog
+            FOREIGN KEY (flex_perk_id) REFERENCES stat_perk_catalog(stat_perk_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_perk_stats_defense_catalog') THEN
+        ALTER TABLE participant_perk_stats ADD CONSTRAINT fk_perk_stats_defense_catalog
+            FOREIGN KEY (defense_perk_id) REFERENCES stat_perk_catalog(stat_perk_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_perk_styles_catalog') THEN
+        ALTER TABLE participant_perk_styles ADD CONSTRAINT fk_perk_styles_catalog
+            FOREIGN KEY (style_id) REFERENCES rune_style_catalog(style_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_perk_selections_catalog') THEN
+        ALTER TABLE participant_perk_selections ADD CONSTRAINT fk_perk_selections_catalog
+            FOREIGN KEY (perk_id) REFERENCES perk_catalog(perk_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_events_item_catalog') THEN
+        ALTER TABLE timeline_events ADD CONSTRAINT fk_events_item_catalog
+            FOREIGN KEY (item_id) REFERENCES item_catalog(item_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_events_before_item_catalog') THEN
+        ALTER TABLE timeline_events ADD CONSTRAINT fk_events_before_item_catalog
+            FOREIGN KEY (before_id) REFERENCES item_catalog(item_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_events_after_item_catalog') THEN
+        ALTER TABLE timeline_events ADD CONSTRAINT fk_events_after_item_catalog
+            FOREIGN KEY (after_id) REFERENCES item_catalog(item_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_events_skill_slot_catalog') THEN
+        ALTER TABLE timeline_events ADD CONSTRAINT fk_events_skill_slot_catalog
+            FOREIGN KEY (skill_slot) REFERENCES skill_slot_catalog(skill_slot);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_events_team_side_catalog') THEN
+        ALTER TABLE timeline_events ADD CONSTRAINT fk_events_team_side_catalog
+            FOREIGN KEY (team_id) REFERENCES team_side_catalog(team_id);
+    END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_rank_snapshots_tier ON rank_snapshots (tier, division, snapshot_at);
 CREATE INDEX IF NOT EXISTS idx_mastery_puuid ON champion_mastery_snapshots (puuid, snapshot_at);
 CREATE INDEX IF NOT EXISTS idx_candidate_rank ON candidate_evaluations (run_id, tier, selected);

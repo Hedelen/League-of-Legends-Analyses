@@ -40,6 +40,13 @@ from discovery import (  # noqa: E402
     screen_reference_matches,
     smoke_discovery_flow,
 )
+from static_lookups import (  # noqa: E402
+    champion_rows,
+    data_dragon_versions_for_patches,
+    item_rows,
+    rune_rows,
+    summoner_spell_rows,
+)
 
 
 def fixture_match():
@@ -244,6 +251,61 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("pipeline_internal.player_scan_checkpoints", schema)
         self.assertIn("platform_code TEXT REFERENCES platform_regions", schema)
         self.assertNotIn("qualifying_match_ids TEXT[]", schema)
+        for table_name in (
+            "champion_catalog",
+            "item_catalog",
+            "summoner_spell_catalog",
+            "rune_style_catalog",
+            "perk_catalog",
+            "stat_perk_catalog",
+            "queue_catalog",
+            "map_catalog",
+            "team_side_catalog",
+            "skill_slot_catalog",
+        ):
+            self.assertIn(f"CREATE TABLE IF NOT EXISTS {table_name}", schema)
+        self.assertIn("fk_perk_selections_catalog", schema)
+        self.assertIn("fk_participant_items_catalog", schema)
+        self.assertIn("fk_matches_queue_catalog", schema)
+
+    def test_static_lookup_parsers_produce_named_relational_rows(self):
+        self.assertEqual(
+            data_dragon_versions_for_patches(
+                ["16.19.1", "16.18.2", "16.18.1", "16.17.1"],
+                {"16.17", "16.18"},
+            ),
+            ["16.17.1", "16.18.2"],
+        )
+        champions = champion_rows(
+            {"data": {"Kayle": {"key": "10", "id": "Kayle", "name": "Kayle", "title": "the Righteous"}}},
+            "16.19.1",
+        )
+        self.assertEqual(champions[0][:4], (10, "Kayle", "Kayle", "the Righteous"))
+        items = item_rows(
+            {"data": {"1056": {"name": "Doran's Ring", "gold": {"total": 400, "purchasable": True}}}},
+            "16.19.1",
+        )
+        self.assertEqual(items[0][0:2], (1056, "Doran's Ring"))
+        spells = summoner_spell_rows(
+            {"data": {"Flash": {"key": "4", "id": "SummonerFlash", "name": "Flash", "cooldown": [300], "summonerLevel": 7}}},
+            "16.19.1",
+        )
+        self.assertEqual((spells[0][0], spells[0][2]), (4, "Flash"))
+        styles, perks = rune_rows(
+            [{
+                "id": 8000,
+                "key": "Precision",
+                "name": "Precision",
+                "slots": [
+                    {"runes": [{"id": 8005, "key": "PressTheAttack", "name": "Press the Attack"}]},
+                    {"runes": [{"id": 9101, "key": "Overheal", "name": "Absorb Life"}]},
+                ],
+            }],
+            "16.19.1",
+        )
+        self.assertEqual(styles[0][2], "Precision")
+        self.assertTrue(perks[0][7])
+        self.assertFalse(perks[1][7])
 
     def test_key_only_bulk_upserts_use_do_nothing(self):
         database = (ROOT / "python" / "database.py").read_text(encoding="utf-8")

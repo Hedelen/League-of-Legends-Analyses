@@ -85,7 +85,14 @@ py python\kayle_pipeline.py init-db
 py python\kayle_pipeline.py discover
 py python\kayle_pipeline.py collect
 py python\kayle_pipeline.py quality
+py python\kayle_pipeline.py refresh-lookups
 ```
+
+`refresh-lookups` is a lightweight metadata refresh. It reads the patch numbers
+already stored in PostgreSQL, downloads Riot's public Data Dragon/static code
+dictionaries, and fills human-readable names for champions, items, summoner
+spells, runes, queues, and maps. It does **not** call Match-V5 or Timeline-V5,
+does not need a Riot API key, and does not re-download any games.
 
 ## 3. How discovery and validation work
 
@@ -113,6 +120,16 @@ This is the evidence-based decision rule; the actual tier mix depends on Riot's 
 | `collection_run_source_versions` | One Data Dragon source version used by a run |
 | `collection_run_settings` | One saved non-secret collection setting value |
 | `platform_regions` | One Riot platform and its Match-V5 routing region |
+| `champion_catalog` | One champion ID and its Riot-published name |
+| `item_catalog` | One item ID and its Riot-published name and metadata |
+| `summoner_spell_catalog` | One summoner-spell ID and its name |
+| `rune_style_catalog` | One rune-tree ID, such as Precision or Resolve |
+| `perk_catalog` | One rune/perk ID, name, tree, slot, and keystone flag |
+| `stat_perk_catalog` | One stat-shard ID and name |
+| `queue_catalog` | One Riot queue ID and description |
+| `map_catalog` | One Riot map ID and name |
+| `team_side_catalog` | One team ID and its Blue/Red side name |
+| `skill_slot_catalog` | One timeline skill-slot ID and Q/W/E/R name |
 | `players` | One durable player identity (PUUID) |
 | `rank_snapshots` | One player's rank and platform at collection time—not historical match-time rank |
 | `champion_mastery_snapshots` | One Kayle mastery observation at collection time |
@@ -148,9 +165,10 @@ After receiving this schema update, run the migration once from the project root
 
 ```powershell
 py python\kayle_pipeline.py init-db
+py python\kayle_pipeline.py refresh-lookups
 ```
 
-Then refresh the `public` schema in DBeaver with `F5` and reopen the ER diagram. The migration copies existing nested values into their child tables before removing the old embedded columns.
+Then refresh the `public` schema in DBeaver with `F5` and reopen the ER diagram. The migration copies existing nested values into their child tables before removing the old embedded columns. The lookup command names every recognized ID already present in the database without fetching the matches again. Its final report explicitly counts any IDs for which Riot's current dictionaries do not publish a name.
 
 ## 5. Open the database in DBeaver and practice SQL
 
@@ -227,6 +245,16 @@ collection_runs
 collection_run_patches
 collection_run_source_versions
 collection_run_settings
+champion_catalog
+item_catalog
+summoner_spell_catalog
+rune_style_catalog
+perk_catalog
+stat_perk_catalog
+queue_catalog
+map_catalog
+team_side_catalog
+skill_slot_catalog
 quality_results
 quality_result_details
 ```
@@ -240,6 +268,43 @@ The main relationships to notice are:
 - `players` + `matches` -> `target_player_matches`
 - `platform_regions` -> rank snapshots, candidates, cohorts, matches, and target player-games
 - `collection_runs` -> `target_player_matches`
+
+### Translate stored IDs into names
+
+The fact tables retain Riot's numeric IDs because IDs are stable join keys. The
+catalog tables give those IDs readable names and are connected by foreign keys,
+so DBeaver also displays them in the ER diagram.
+
+For example, the primary rune style is `style_index = 0`, and its first selected
+rune is the keystone. This query returns the keystone used by each collected
+target player-game:
+
+```sql
+SELECT
+    t.cohort_type,
+    p.match_id,
+    p.riot_id_game_name,
+    pc.perk_id AS keystone_id,
+    pc.perk_name AS keystone_name
+FROM target_player_matches AS t
+JOIN participants AS p
+  ON p.match_id = t.match_id
+ AND p.participant_id = t.participant_id
+JOIN participant_perk_selections AS ps
+  ON ps.match_id = p.match_id
+ AND ps.participant_id = p.participant_id
+JOIN perk_catalog AS pc
+  ON pc.perk_id = ps.perk_id
+WHERE ps.style_index = 0
+  AND ps.selection_index = 0
+  AND pc.is_keystone
+ORDER BY p.match_id, p.riot_id_game_name;
+```
+
+The same pattern applies elsewhere: join `participant_items.item_id` to
+`item_catalog.item_id`, participant summoner-spell IDs to
+`summoner_spell_catalog.summoner_spell_id`, and `matches.queue_id` to
+`queue_catalog.queue_id`.
 
 DBeaver reads these relationships from the primary and foreign keys already created by `sql/01_schema.sql`; you do not need to create the relationships manually.
 
@@ -534,4 +599,4 @@ Run the local sanitized fixture tests:
 py -m unittest discover -s tests -v
 ```
 
-They verify the 150-row multi-region candidate snapshot, regional metadata, 10-participant normalization, all frames for all participants, event retention, raw future-field preservation, patch parsing, TOP fallback/conflict behavior, and idempotent schema keys. A live API/database acceptance test still requires your local Riot key and PostgreSQL service.
+They verify the 150-row multi-region candidate snapshot, regional metadata, 10-participant normalization, all frames for all participants, event retention, raw future-field preservation, patch parsing, TOP fallback/conflict behavior, static lookup parsing, and idempotent schema keys. A live API/database acceptance test still requires your local Riot key and PostgreSQL service.

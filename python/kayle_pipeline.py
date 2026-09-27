@@ -21,6 +21,7 @@ from database import (
 from discovery import evaluate_candidates, select_and_plan, smoke_discovery_flow
 from patches import get_live_patch_window
 from riot_api import RiotAPI
+from static_lookups import print_lookup_report, refresh_static_lookups
 
 
 def init_database(settings: Any) -> None:
@@ -132,15 +133,35 @@ def main() -> int:
             "resume",
             "status",
             "quality",
+            "refresh-lookups",
         ),
     )
     parser.add_argument("--smoke-count", type=int, default=5)
     args = parser.parse_args()
-    require_key = args.command not in ("init-db", "status", "quality")
+    require_key = args.command not in (
+        "init-db",
+        "status",
+        "quality",
+        "refresh-lookups",
+    )
     settings = get_settings(require_api_key=require_key)
 
-    if args.command == "init-db":
+    if args.command in ("init-db", "refresh-lookups"):
         init_database(settings)
+
+    if args.command == "init-db":
+        return 0
+
+    if args.command == "refresh-lookups":
+        print(
+            "[lookups] Refreshing names for stored IDs only; "
+            "matches and timelines will not be downloaded again"
+        )
+        with connect(settings.postgres_dsn) as conn:
+            report = refresh_static_lookups(
+                conn, timeout=settings.http_timeout_seconds
+            )
+        print_lookup_report(report)
         return 0
 
     if args.command == "smoke-discovery":
