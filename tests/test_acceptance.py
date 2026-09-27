@@ -245,6 +245,15 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("platform_code TEXT REFERENCES platform_regions", schema)
         self.assertNotIn("qualifying_match_ids TEXT[]", schema)
 
+    def test_key_only_bulk_upserts_use_do_nothing(self):
+        database = (ROOT / "python" / "database.py").read_text(encoding="utf-8")
+        self.assertIn('if updates:', database)
+        self.assertIn('query += sql.SQL("DO NOTHING")', database)
+        self.assertNotIn(
+            'ON CONFLICT ({}) DO UPDATE SET {}',
+            database,
+        )
+
     def test_fixed_opgg_snapshot_has_150_unique_multiregion_riot_ids(self):
         candidates = discover_kayle_candidates()
         self.assertEqual(len(candidates), 150)
