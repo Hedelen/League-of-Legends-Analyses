@@ -1,0 +1,94 @@
+"enemy_champ","typical_keystone","pct_pta","pct_leth_temp","pct_fleet","tot_games_against_champ"
+"Malzahar","Fleet Footwork",0,0,100.0,1
+"Zac","Fleet Footwork",0,0,100.0,1
+"Yorick","Lethal Tempo",40.0,50.0,10.0,10
+"Sion","Lethal Tempo",35.7,50.0,7.1,14
+"Rammus","Lethal Tempo",0,100.0,0,1
+"Galio","Lethal Tempo",0,100.0,0,1
+"Viktor","Lethal Tempo",0,100.0,0,1
+"Chogath","Lethal Tempo",25.0,75.0,0,4
+"Riven","Press the Attack",85.0,5.0,10.0,20
+"Ornn","Press the Attack",70.0,25.0,0,20
+"Renekton","Press the Attack",70.0,20.0,10.0,20
+"Olaf","Press the Attack",70.0,20.0,5.0,20
+"Aatrox","Press the Attack",84.2,10.5,5.3,19
+"Camille","Press the Attack",63.2,31.6,0,19
+"Fiora","Press the Attack",77.8,16.7,5.6,18
+"Ambessa","Press the Attack",66.7,33.3,0,18
+"Sett","Press the Attack",70.6,29.4,0,17
+"Singed","Press the Attack",93.8,6.3,0,16
+"Urgot","Press the Attack",56.3,25.0,12.5,16
+"Shen","Press the Attack",50.0,43.8,6.3,16
+"Garen","Press the Attack",66.7,26.7,6.7,15
+"Akali","Press the Attack",76.9,15.4,7.7,13
+"KSante","Press the Attack",76.9,15.4,0,13
+"Malphite","Press the Attack",61.5,15.4,23.1,13
+"Kled","Press the Attack",61.5,38.5,0,13
+"Gwen","Press the Attack",66.7,33.3,0,12
+"Zaahen","Press the Attack",58.3,41.7,0,12
+"Gnar","Press the Attack",50.0,33.3,16.7,12
+"DrMundo","Press the Attack",50.0,50.0,0,10
+"Sylas","Press the Attack",88.9,11.1,0,9
+"Tryndamere","Press the Attack",55.6,22.2,22.2,9
+"Vladimir","Press the Attack",87.5,12.5,0,8
+"Gragas","Press the Attack",87.5,0,12.5,8
+"Pantheon","Press the Attack",62.5,25.0,12.5,8
+"Volibear","Press the Attack",71.4,14.3,14.3,7
+"Kennen","Press the Attack",100.0,0,0,6
+"Quinn","Press the Attack",100.0,0,0,6
+"Warwick","Press the Attack",83.3,0,16.7,6
+"Aurora","Press the Attack",83.3,16.7,0,6
+"Anivia","Press the Attack",66.7,16.7,16.7,6
+"Mordekaiser","Press the Attack",66.7,33.3,0,6
+"Teemo","Press the Attack",66.7,33.3,0,6
+"MonkeyKing","Press the Attack",100.0,0,0,5
+"Trundle","Press the Attack",80.0,20.0,0,5
+"Poppy","Press the Attack",75.0,25.0,0,4
+"Swain","Press the Attack",75.0,25.0,0,4
+"Illaoi","Press the Attack",50.0,50.0,0,4
+"Lissandra","Press the Attack",50.0,25.0,25.0,4
+"Ryze","Press the Attack",100.0,0,0,3
+"Viego","Press the Attack",100.0,0,0,3
+"Locke","Press the Attack",100.0,0,0,3
+"Heimerdinger","Press the Attack",100.0,0,0,3
+"Varus","Press the Attack",100.0,0,0,3
+"Akshan","Press the Attack",66.7,33.3,0,3
+"TahmKench","Press the Attack",66.7,0,33.3,3
+"Tristana","Press the Attack",66.7,33.3,0,3
+"Vayne","Press the Attack",66.7,0,33.3,3
+"Rumble","Press the Attack",66.7,33.3,0,3
+"Zilean","Press the Attack",100.0,0,0,2
+"Azir","Press the Attack",100.0,0,0,2
+"Cassiopeia","Press the Attack",100.0,0,0,2
+"Fizz","Press the Attack",100.0,0,0,2
+"Kayn","Press the Attack",100.0,0,0,2
+"Leblanc","Press the Attack",100.0,0,0,2
+"Smolder","Press the Attack",50.0,0,50.0,2
+"Sejuani","Press the Attack",50.0,50.0,0,2
+"Taliyah","Press the Attack",50.0,50.0,0,2
+"FiddleSticks","Press the Attack",50.0,50.0,0,2
+"Corki","Press the Attack",50.0,50.0,0,2
+"Briar","Press the Attack",50.0,50.0,0,2
+"Qiyana","Press the Attack",100.0,0,0,1
+"Naafiri","Press the Attack",100.0,0,0,1
+"TwistedFate","Press the Attack",100.0,0,0,1
+"MasterYi","Press the Attack",100.0,0,0,1
+"Ivern","Press the Attack",100.0,0,0,1
+"XinZhao","Press the Attack",100.0,0,0,1
+"Rengar","Press the Attack",100.0,0,0,1
+"Elise","Press the Attack",100.0,0,0,1
+"Nasus","Press the Attack",64.1,35.9,0,39
+"Katarina","Press the Attack",100.0,0,0,1
+"Veigar","Press the Attack",100.0,0,0,1
+"Velkoz","Press the Attack",100.0,0,0,1
+"Kassadin","Press the Attack",100.0,0,0,1
+"Karma","Press the Attack",100.0,0,0,1
+"Jhin","Press the Attack",100.0,0,0,1
+"Neeko","Press the Attack",100.0,0,0,1
+"Yone","Press the Attack",62.1,34.5,3.4,29
+"Darius","Press the Attack",59.3,37.0,3.7,27
+"Irelia","Press the Attack",69.2,26.9,3.8,26
+"Jayce","Press the Attack",72.0,12.0,8.0,25
+"Gangplank","Press the Attack",72.0,20.0,8.0,25
+"Jax","Press the Attack",60.0,28.0,12.0,25
+"Yasuo","Press the Attack",90.5,9.5,0,21
