@@ -540,6 +540,23 @@ Use the normalized views when practicing analysis; use the base tables when prac
 
 `sql/03_explore.sql` contains additional commented examples. `sql/04_quality_checks.sql` contains the detailed validation queries.
 
+### Current analysis — keystone selection by top-lane matchup
+
+The first portfolio analysis built directly from the normalized PostgreSQL model asks:
+
+> **When Kayle faces a specific enemy top laner, how often is each keystone selected?**
+
+The SQL is in `sql/05_keystone_matchup_analysis.sql`. It joins participant-level champion data to normalized perk-style, perk-selection, and perk-catalog tables, then moves through a series of explicit grain changes:
+
+1. one row per match with the opposing TOP champion and Kayle's keystone;
+2. one row per enemy champion × keystone with usage counts;
+3. usage percentage within each enemy-champion matchup;
+4. a final wide-format view with one row per enemy champion.
+
+The resulting view, `keystone_for_enemy`, contains the most-used observed keystone, PTA / Lethal Tempo / Fleet Footwork selection percentages, and total matchup sample size. A derived snapshot is stored at `data/derived/keystone_matchup_summary.csv`.
+
+This is a **descriptive selection analysis**, not yet a claim about the optimal or highest-performing rune. Small matchup samples can produce extreme percentages, and future work should compare outcomes and lane-state metrics before interpreting a rune as "best."
+
 ### Safe practice rule
 
 While learning, stay with `SELECT` statements and CTEs beginning with `WITH`. Do not run `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `INSERT`, or `ALTER` against this database unless you deliberately intend to change stored data. If you make a mistake in a practice query, PostgreSQL normally returns an error without changing anything.
