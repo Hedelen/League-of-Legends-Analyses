@@ -557,6 +557,23 @@ The resulting view, `keystone_for_enemy`, contains the most-used observed keysto
 
 This is a **descriptive selection analysis**, not yet a claim about the optimal or highest-performing rune. Small matchup samples can produce extreme percentages, and future work should compare outcomes and lane-state metrics before interpreting a rune as "best."
 
+
+### Current analysis — matchup minute-state benchmarking
+
+The next portfolio analysis is now in progress and asks:
+
+> **How should Kayle's lane-state metrics evolve minute by minute against each opposing top-lane champion, and does that pattern differ by Blue/Red side?**
+
+The working SQL is in `sql/06_matchup_minute_analysis.sql`. It deliberately changes grain in stages:
+
+1. one row per top-lane participant × match × timeline minute;
+2. one row per match × minute with Kayle and the opposing top laner side by side;
+3. one row per opposing champion × Kayle side × minute for cross-game benchmarking.
+
+The current version uses `LAG()` to calculate minute-level CS and jungle-CS gains, preserves current/total gold, percent HP, win outcome, and map position, and then calculates matchup-minute averages for Kayle and her opponent. Keeping Kayle's map side as a separate grouping dimension allows Blue-side and Red-side matchup behavior to be compared rather than blended together.
+
+Planned next steps are to add standard deviations and sample counts, normalize or categorize map position before interpreting spatial averages, compare SELF observations against the reference-player benchmark, and visualize cumulative/non-cumulative CS trajectories by matchup.
+
 ### Safe practice rule
 
 While learning, stay with `SELECT` statements and CTEs beginning with `WITH`. Do not run `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `INSERT`, or `ALTER` against this database unless you deliberately intend to change stored data. If you make a mistake in a practice query, PostgreSQL normally returns an error without changing anything.
