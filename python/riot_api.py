@@ -193,13 +193,17 @@ class RiotAPI:
             f"/lol/league/v4/{endpoint}/by-queue/RANKED_SOLO_5x5",
         )
 
-    def kayle_mastery(self, puuid: str) -> dict[str, Any] | None:
+    def champion_mastery(self, puuid: str, champion_id: int) -> dict[str, Any] | None:
         return self._get(
             self.platform,
             "/lol/champion-mastery/v4/champion-masteries/by-puuid/"
-            f"{quote(puuid, safe='')}/by-champion/10",
+            f"{quote(puuid, safe='')}/by-champion/{champion_id}",
             allow_404=True,
         )
+
+    def kayle_mastery(self, puuid: str) -> dict[str, Any] | None:
+        """Compatibility wrapper for callers outside the pipeline."""
+        return self.champion_mastery(puuid, 10)
 
     def match_ids(
         self,

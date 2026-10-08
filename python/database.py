@@ -67,13 +67,16 @@ def _json(value: Any) -> Jsonb:
 
 
 def start_run(conn: psycopg.Connection, window: Any, settings: Any) -> int:
+    from champions import champion_spec
+
+    spec = champion_spec(getattr(settings, "target_champion_key", "kayle"))
     row = conn.execute(
         """
-        INSERT INTO collection_runs (status, current_patch)
-        VALUES ('DISCOVERING', %s)
+        INSERT INTO collection_runs (status, current_patch, target_champion_id)
+        VALUES ('DISCOVERING', %s, %s)
         RETURNING run_id
         """,
-        (window.current,),
+        (window.current, spec.champion_id),
     ).fetchone()
     run_id = int(row["run_id"])
     with conn.cursor() as cur:
@@ -133,7 +136,7 @@ def get_run(conn: psycopg.Connection, run_id: int) -> dict[str, Any] | None:
     ).fetchone()
 
 
-def resumable_run(conn: psycopg.Connection) -> dict[str, Any] | None:
+def resumable_run(conn: psycopg.Connection, champion_id: int = 10) -> dict[str, Any] | None:
     return conn.execute(
         """
         SELECT r.*,
@@ -143,8 +146,10 @@ def resumable_run(conn: psycopg.Connection) -> dict[str, Any] | None:
                ) AS patch_window
         FROM collection_runs r
         WHERE r.status IN ('DISCOVERING','DISCOVERED','COLLECTING','FAILED')
+          AND r.target_champion_id=%s
         ORDER BY r.run_id DESC LIMIT 1
-        """
+        """,
+        (champion_id,),
     ).fetchone()
 
 
@@ -251,7 +256,8 @@ def add_rank_snapshot(
 
 
 def add_mastery(
-    conn: psycopg.Connection, run_id: int, puuid: str, mastery: dict[str, Any] | None
+    conn: psycopg.Connection, run_id: int, puuid: str,
+    mastery: dict[str, Any] | None, champion_id: int = 10
 ) -> int:
     mastery = mastery or {}
     points = int(mastery.get("championPoints") or 0)
@@ -260,7 +266,7 @@ def add_mastery(
         INSERT INTO champion_mastery_snapshots
           (run_id, puuid, champion_id, champion_level, champion_points,
            last_play_time_ms)
-        VALUES (%s,%s,10,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s)
         ON CONFLICT (run_id, puuid, champion_id) DO UPDATE SET
           champion_level=EXCLUDED.champion_level,
           champion_points=EXCLUDED.champion_points,
@@ -270,6 +276,7 @@ def add_mastery(
         (
             run_id,
             puuid,
+            champion_id,
             mastery.get("championLevel"),
             points,
             mastery.get("lastPlayTime"),
@@ -280,11 +287,11 @@ def add_mastery(
             """
             INSERT INTO raw_archive.raw_mastery_snapshots
               (run_id, puuid, champion_id, payload)
-            VALUES (%s,%s,10,%s)
+            VALUES (%s,%s,%s,%s)
             ON CONFLICT (run_id, puuid, champion_id) DO UPDATE SET
               payload=EXCLUDED.payload, stored_at=now()
             """,
-            (run_id, puuid, _json(mastery)),
+            (run_id, puuid, champion_id, _json(mastery)),
         )
     return points
 

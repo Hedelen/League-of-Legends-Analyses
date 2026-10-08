@@ -1,13 +1,13 @@
-# Kayle TOP longitudinal analysis
+# Kayle, Urgot, and Mordekaiser TOP longitudinal analysis
 
-This is a separate, direct-to-PostgreSQL collector for learning Kayle TOP. It does **not** read from or write to the existing `riot_analysis` database.
+This is a separate, direct-to-PostgreSQL collector for learning TOP-lane analysis. Kayle remains the default target, and Urgot and Mordekaiser can be selected per run. It does **not** read from or write to the existing `riot_analysis` database.
 
 It collects two populations:
 
 - **SELF:** Ranked Solo/Duo Kayle TOP matches for the Riot IDs configured in `SELF_ACCOUNTS`, up to the configured `SELF_MAX_MATCHES` scan limit, then appends new games on later runs.
-- **REFERENCE:** Riot-validated Emerald IV+ Kayle TOP players discovered from fixed OP.GG snapshots for NA, EUW, Korea, EUNE, and Brazil, using the live patch plus the previous two patches.
+- **REFERENCE:** Riot-validated Master/Grandmaster/Challenger Kayle TOP players discovered from fixed OP.GG snapshots for NA, EUW, Korea, EUNE, and Brazil. Diamond I-II is used only if Master+ history cannot fill the target.
 
-The default plan targets about 100 reference players and 1,000 Kayle player-games, with at most 10 qualifying games per player. Every qualifying match stores all 10 participants, every timeline frame for all 10 players, timeline events, normalized analytical columns, and the complete Match-V5 and timeline payloads in the separate `raw_archive` schema.
+The default plan targets 5,000 Kayle player-games, screens up to 500 Ranked Solo matches per candidate, and accepts up to 100 qualifying games per player. It uses all retrievable history rather than a three-patch window. Every qualifying match stores all 10 participants, every timeline frame for all 10 players, timeline events, normalized analytical columns, and the complete Match-V5 and timeline payloads in the separate `raw_archive` schema.
 
 ## 1. One-time Windows / VS Code setup
 
@@ -37,11 +37,15 @@ POSTGRES_DSN=postgresql://postgres:your_real_postgres_password@localhost:5432/ka
 For the worldwide reference run, confirm these current settings are also present in `.env` (the older `TARGET_GAMES_PER_RANK` and `MAX_GAMES_PER_REFERENCE_PLAYER` settings are no longer used):
 
 ```dotenv
-TARGET_REFERENCE_PLAYERS=100
-TARGET_REFERENCE_PLAYER_GAMES=1000
-REFERENCE_GAMES_PER_PLAYER=10
-MIN_REFERENCE_KAYLE_GAMES=5
-REFERENCE_MATCHES_TO_SCREEN=100
+TARGET_REFERENCE_PLAYERS=150
+TARGET_REFERENCE_PLAYER_GAMES=5000
+REFERENCE_GAMES_PER_PLAYER=100
+REFERENCE_MATCHES_TO_SCREEN=500
+REFERENCE_USE_PATCH_WINDOW=false
+REFERENCE_ALLOW_HIGH_DIAMOND=true
+MIN_KAYLE_MASTERY_POINTS=0
+MIN_ACCOUNT_EXPERIENCE_GAMES=0
+MIN_REFERENCE_KAYLE_GAMES=1
 ```
 
 Do not paste the API key into Python, SQL, Git, or ChatGPT. Riot development keys expire about every 24 hours; refreshing the value in `.env` is normal.
@@ -62,6 +66,18 @@ This one command creates the **new** `kayle_analysis` database, discovers the co
 py python\kayle_pipeline.py run
 ```
 
+To verify the complete pipeline with exactly one reference match before a long
+run, stop the current command with `Ctrl+C`, run the isolated test, and resume:
+
+```powershell
+py python\kayle_pipeline.py test-one
+py python\kayle_pipeline.py resume
+```
+
+`test-one` creates its own completed collection run, downloads one match and
+timeline, normalizes every table, and runs the quality checks. It does not
+replace or cancel the unfinished full run.
+
 Discovery uses `data/kayle_candidates.csv`, a fixed snapshot of 150 OP.GG Kayle leaderboard Riot IDs: 30 each from NA, EUW, Korea, EUNE, and Brazil. The collector does not scrape public sites while running. Riot validates every candidate and supplies every fact used by the database and analysis. The command prints the source platform, Riot-validated rank, eligible Kayle games, unique-match progress, retries, and the final quality summary. You may stop it with `Ctrl+C` without losing already committed work.
 
 Check progress at any time:
@@ -77,6 +93,27 @@ py python\kayle_pipeline.py resume
 ```
 
 `run` and `resume` are idempotent: existing matches, participants, frames, and events are updated through stable primary keys rather than duplicated.
+
+### Urgot and Mordekaiser runs
+
+Each champion has a fixed 100-player OP.GG discovery snapshot: 20 Riot IDs each from NA, EUW, Korea, EUNE, and Brazil. Run a five-player Riot validation smoke test first, then start that champion's resumable collection run:
+
+```powershell
+py python\kayle_pipeline.py smoke-discovery --champion urgot --smoke-count 5
+py python\kayle_pipeline.py run --champion urgot
+
+py python\kayle_pipeline.py smoke-discovery --champion mordekaiser --smoke-count 5
+py python\kayle_pipeline.py run --champion mordekaiser
+```
+
+Resume and status commands must name the same champion:
+
+```powershell
+py python\kayle_pipeline.py resume --champion urgot
+py python\kayle_pipeline.py status --champion urgot
+```
+
+Omitting `--champion` continues to mean Kayle. Runs are champion-specific, so an Urgot command cannot accidentally resume an unfinished Kayle or Mordekaiser run. The public CSVs provide only candidate Riot IDs, regions, and leaderboard positions; Riot remains the authority for rank, mastery, role, queue, and all match data.
 
 Optional phase-by-phase commands:
 
@@ -98,14 +135,14 @@ does not need a Riot API key, and does not re-download any games.
 
 The code makes the decision automatically from the data available when you run it:
 
-1. Reads Riot Data Dragon's live version list and converts versions such as `26.18.701...` to patch `26.18`. The first three distinct major/minor patches become the reference window.
+1. Reads Riot Data Dragon's live version list for metadata. By default, reference screening uses all retrievable Ranked Solo history; set `REFERENCE_USE_PATCH_WINDOW=true` to restore the three-patch restriction.
 2. Reads the fixed multi-region candidate snapshot stored in `data/kayle_candidates.csv`. `python/public_sources.py` validates and loads the file. No live public-site scrape is performed. OP.GG supplies only the Riot ID, source region, and leaderboard position; displayed rank, win rate, KDA, and other public-site statistics are not analysis data.
-3. Routes each candidate through the correct Riot platform and Match-V5 region, resolves the Riot ID with Account-V1, and uses League-V4 as the source of truth for current Ranked Solo rank. Anyone below Emerald IV or unranked stops here.
-4. Applies the remaining cheap-to-expensive checks in order: Riot Kayle mastery, the existing 200-game experience proof, then Match-V5 role/patch screening. Screening stops immediately on a decisive failure or once the minimum qualifying Kayle TOP games is reached.
-5. Verifies actual current-window Ranked Solo Kayle TOP games from official Match-V5 payloads. `teamPosition=TOP` is preferred; `individualPosition=TOP` is used only when team position is missing. Conflicts remain flagged and excluded. Screening stops once 10 qualifying games have been found or the configured search limit has been reached.
-6. Screens all 150 listed Riot IDs. Selection round-robins across platforms and Riot-validated ranks; OP.GG position is only a tie-breaker. It keeps adding eligible players until both the configured player target and the available capacity for the game target have been reached.
+3. Routes each candidate through the correct Riot platform and Match-V5 region, resolves the Riot ID with Account-V1, and uses League-V4 as the source of truth for current Ranked Solo rank. Master+ is preferred; Diamond I-II is the only fallback when enabled.
+4. Verifies Ranked Solo Kayle TOP games from official Match-V5 payloads. `teamPosition=TOP` is preferred; `individualPosition=TOP` is used only when team position is missing. Conflicts remain flagged and excluded.
+5. Screens up to 500 matches per candidate and keeps up to 100 qualifying games. The mastery and account-experience gates default to zero because rank plus Kayle TOP are the requested restrictions.
+6. Selection exhausts Master+ capacity first and adds Diamond I-II only if needed to approach 5,000 games. OP.GG position is only a discovery tie-breaker.
 
-Default target: 100 reference players and 1,000 player-games, capped at 10 games per player. The collector may select more than 100 players or produce fewer than 1,000 observations when legitimate eligible games are unavailable. `candidate_evaluations` records every eligibility and selection reason, `reference_cohort` records the resulting plan, and every selected row retains its platform/region.
+Default target: 5,000 player-games, capped at 100 games per player and 150 players. The collector may produce fewer than 5,000 observations when the fixed candidate snapshot does not contain enough legitimate eligible games. `candidate_evaluations` records every eligibility and selection reason, `reference_cohort` records the resulting plan, and every selected row retains its platform/region.
 
 The snapshot was assembled on 2026-09-26 from public OP.GG Kayle champion leaderboards. To refresh it later, replace the CSV with another documented snapshot; do not add public-site scraping to the normal collection run.
 
@@ -115,7 +152,7 @@ This is the evidence-based decision rule; the actual tier mix depends on Riot's 
 
 | Table | One row represents |
 |---|---|
-| `collection_runs` | One collection run and its status/current patch |
+| `collection_runs` | One champion-specific collection run and its status/current patch |
 | `collection_run_patches` | One ordered patch in a run's three-patch window |
 | `collection_run_source_versions` | One Data Dragon source version used by a run |
 | `collection_run_settings` | One saved non-secret collection setting value |
@@ -540,40 +577,6 @@ Use the normalized views when practicing analysis; use the base tables when prac
 
 `sql/03_explore.sql` contains additional commented examples. `sql/04_quality_checks.sql` contains the detailed validation queries.
 
-### Current analysis — keystone selection by top-lane matchup
-
-The first portfolio analysis built directly from the normalized PostgreSQL model asks:
-
-> **When Kayle faces a specific enemy top laner, how often is each keystone selected?**
-
-The SQL is in `sql/05_keystone_matchup_analysis.sql`. It joins participant-level champion data to normalized perk-style, perk-selection, and perk-catalog tables, then moves through a series of explicit grain changes:
-
-1. one row per match with the opposing TOP champion and Kayle's keystone;
-2. one row per enemy champion × keystone with usage counts;
-3. usage percentage within each enemy-champion matchup;
-4. a final wide-format view with one row per enemy champion.
-
-The resulting view, `keystone_for_enemy`, contains the most-used observed keystone, PTA / Lethal Tempo / Fleet Footwork selection percentages, and total matchup sample size. A derived snapshot is stored at `data/derived/keystone_matchup_summary.csv`.
-
-This is a **descriptive selection analysis**, not yet a claim about the optimal or highest-performing rune. Small matchup samples can produce extreme percentages, and future work should compare outcomes and lane-state metrics before interpreting a rune as "best."
-
-
-### Current analysis — matchup minute-state benchmarking
-
-The next portfolio analysis is now in progress and asks:
-
-> **How should Kayle's lane-state metrics evolve minute by minute against each opposing top-lane champion, and does that pattern differ by Blue/Red side?**
-
-The working SQL is in `sql/06_matchup_minute_analysis.sql`. It deliberately changes grain in stages:
-
-1. one row per top-lane participant × match × timeline minute;
-2. one row per match × minute with Kayle and the opposing top laner side by side;
-3. one row per opposing champion × Kayle side × minute for cross-game benchmarking.
-
-The current version uses `LAG()` to calculate minute-level CS and jungle-CS gains, preserves current/total gold, percent HP, win outcome, and map position, and then calculates matchup-minute averages for Kayle and her opponent. Keeping Kayle's map side as a separate grouping dimension allows Blue-side and Red-side matchup behavior to be compared rather than blended together.
-
-Planned next steps are to add standard deviations and sample counts, normalize or categorize map position before interpreting spatial averages, compare SELF observations against the reference-player benchmark, and visualize cumulative/non-cumulative CS trajectories by matchup.
-
 ### Safe practice rule
 
 While learning, stay with `SELECT` statements and CTEs beginning with `WITH`. Do not run `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `INSERT`, or `ALTER` against this database unless you deliberately intend to change stored data. If you make a mistake in a practice query, PostgreSQL normally returns an error without changing anything.
@@ -634,3 +637,4 @@ py -m unittest discover -s tests -v
 ```
 
 They verify the 150-row multi-region candidate snapshot, regional metadata, 10-participant normalization, all frames for all participants, event retention, raw future-field preservation, patch parsing, TOP fallback/conflict behavior, static lookup parsing, and idempotent schema keys. A live API/database acceptance test still requires your local Riot key and PostgreSQL service.
+

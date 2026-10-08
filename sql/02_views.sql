@@ -47,7 +47,7 @@ SELECT
     b.champion_id
 FROM team_bans b;
 
-CREATE OR REPLACE VIEW v_kayle_target_games AS
+CREATE OR REPLACE VIEW v_target_champion_games AS
 SELECT
     t.run_id, t.cohort_type, t.rank_at_collection, t.division_at_collection,
     t.lp_at_collection, t.rank_snapshot_at, t.puuid, t.match_id,
@@ -58,12 +58,32 @@ SELECT
     p.gold_earned, p.total_damage_to_champions, p.vision_score,
     m.game_start, m.game_duration_seconds, m.game_version, m.patch,
     m.queue_id, m.timeline_status, m.is_remake_or_short,
-    m.unexpected_participant_count
+    m.unexpected_participant_count,
+    t.target_champion_id,
+    COALESCE(cc.champion_name, p.champion_name) AS target_champion_name
 FROM target_player_matches t
 JOIN participants p
   ON p.match_id=t.match_id AND p.participant_id=t.participant_id
 JOIN matches m
-  ON m.match_id=t.match_id;
+  ON m.match_id=t.match_id
+LEFT JOIN champion_catalog cc
+  ON cc.champion_id=t.target_champion_id;
+
+-- Preserve the original Kayle views for existing exercises and notebooks.
+CREATE OR REPLACE VIEW v_kayle_target_games AS
+SELECT
+    run_id, cohort_type, rank_at_collection, division_at_collection,
+    lp_at_collection, rank_snapshot_at, puuid, match_id,
+    participant_id, role_source, role_ambiguous,
+    riot_id_game_name, riot_id_tagline, team_id, champion_name,
+    team_position, individual_position, win, kills, deaths,
+    assists, total_minions_killed, neutral_minions_killed,
+    gold_earned, total_damage_to_champions, vision_score,
+    game_start, game_duration_seconds, game_version, patch,
+    queue_id, timeline_status, is_remake_or_short,
+    unexpected_participant_count
+FROM v_target_champion_games
+WHERE target_champion_id=10;
 
 CREATE OR REPLACE VIEW v_self_kayle_games AS
 SELECT * FROM v_kayle_target_games WHERE cohort_type='SELF';
@@ -147,9 +167,14 @@ SELECT
     e.evidence_method, e.observed_game_count,
     c.eligible, c.selected, c.selection_reason, c.planned_game_count,
     c.discovery_source, c.source_position,
-    c.source_region, c.platform_code, c.routing_region
+    c.source_region, c.platform_code, c.routing_region,
+    r.target_champion_id,
+    cc.champion_name AS target_champion_name,
+    c.champion_mastery_points, c.qualifying_top_games, c.top_play_rate
 FROM candidate_evaluations c
 JOIN players p USING (puuid)
+JOIN collection_runs r USING (run_id)
+LEFT JOIN champion_catalog cc ON cc.champion_id=r.target_champion_id
 LEFT JOIN account_experience_checks e USING (run_id, puuid);
 
 CREATE OR REPLACE VIEW v_player_contribution AS
@@ -184,6 +209,21 @@ JOIN collection_run_matches crm
   ON crm.run_id=k.run_id AND crm.match_id=k.match_id
 WHERE k.queue_id=420
   AND k.champion_name='Kayle'
+  AND NOT k.role_ambiguous
+  AND NOT k.is_remake_or_short
+  AND NOT k.unexpected_participant_count
+  AND k.timeline_status='COMPLETE'
+  AND (k.cohort_type='SELF' OR crm.in_active_reference_window);
+
+CREATE OR REPLACE VIEW v_clean_target_champion_games AS
+SELECT k.*
+FROM v_target_champion_games k
+JOIN collection_run_matches crm
+  ON crm.run_id=k.run_id AND crm.match_id=k.match_id
+WHERE k.queue_id=420
+  AND k.target_champion_id=(
+      SELECT target_champion_id FROM collection_runs WHERE run_id=k.run_id
+  )
   AND NOT k.role_ambiguous
   AND NOT k.is_remake_or_short
   AND NOT k.unexpected_participant_count

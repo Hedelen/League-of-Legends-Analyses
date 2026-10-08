@@ -17,12 +17,17 @@ def participant_for_puuid(match: dict[str, Any], puuid: str) -> dict[str, Any] |
     )
 
 
-def kayle_top_classification(participant: dict[str, Any] | None) -> dict[str, Any]:
+def target_top_classification(
+    participant: dict[str, Any] | None,
+    champion_id: int,
+    champion_name: str = "target champion",
+) -> dict[str, Any]:
     """Apply the documented TOP rule and expose conflicts instead of hiding them."""
     if not participant:
         return {"qualifies": False, "role_source": None, "ambiguous": True, "reason": "target_missing"}
-    if participant.get("championId") != KAYLE_CHAMPION_ID:
-        return {"qualifies": False, "role_source": None, "ambiguous": False, "reason": "not_kayle"}
+    if participant.get("championId") != champion_id:
+        reason = f"not_{champion_name.lower().replace(' ', '_')}"
+        return {"qualifies": False, "role_source": None, "ambiguous": False, "reason": reason}
     team = (participant.get("teamPosition") or "").upper()
     individual = (participant.get("individualPosition") or "").upper()
     if team == "TOP":
@@ -34,6 +39,11 @@ def kayle_top_classification(participant: dict[str, Any] | None) -> dict[str, An
     if not team and not individual:
         return {"qualifies": False, "role_source": None, "ambiguous": True, "reason": "role_missing"}
     return {"qualifies": False, "role_source": None, "ambiguous": False, "reason": "not_top"}
+
+
+def kayle_top_classification(participant: dict[str, Any] | None) -> dict[str, Any]:
+    """Compatibility wrapper for the original Kayle-only API."""
+    return target_top_classification(participant, KAYLE_CHAMPION_ID, "Kayle")
 
 
 def _duration_seconds(info: dict[str, Any]) -> int | None:
@@ -428,13 +438,18 @@ def normalize_raw_events(timeline: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def target_rows_for_match(
-    match: dict[str, Any], targets: Iterable[tuple[str, str]]
+    match: dict[str, Any],
+    targets: Iterable[tuple[str, str]],
+    champion_id: int = KAYLE_CHAMPION_ID,
+    champion_name: str = "Kayle",
 ) -> list[dict[str, Any]]:
     """Return qualifying target participants for (puuid, cohort_type) pairs."""
     rows: list[dict[str, Any]] = []
     for puuid, cohort_type in targets:
         participant = participant_for_puuid(match, puuid)
-        classification = kayle_top_classification(participant)
+        classification = target_top_classification(
+            participant, champion_id, champion_name
+        )
         if classification["qualifies"]:
             rows.append(
                 {

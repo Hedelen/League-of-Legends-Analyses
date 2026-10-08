@@ -35,8 +35,12 @@ CREATE TABLE IF NOT EXISTS collection_runs (
     status TEXT NOT NULL DEFAULT 'STARTED'
         CHECK (status IN ('STARTED','DISCOVERING','DISCOVERED','COLLECTING','COMPLETED','FAILED')),
     current_patch TEXT NOT NULL,
-    last_error TEXT
+    last_error TEXT,
+    target_champion_id INTEGER NOT NULL DEFAULT 10
 );
+
+ALTER TABLE collection_runs
+    ADD COLUMN IF NOT EXISTS target_champion_id INTEGER NOT NULL DEFAULT 10;
 
 CREATE TABLE IF NOT EXISTS collection_run_patches (
     run_id BIGINT NOT NULL REFERENCES collection_runs(run_id) ON DELETE CASCADE,
@@ -307,6 +311,9 @@ CREATE TABLE IF NOT EXISTS candidate_evaluations (
     ranked_games_in_window INTEGER NOT NULL DEFAULT 0,
     qualifying_kayle_top_games INTEGER NOT NULL DEFAULT 0,
     kayle_top_play_rate NUMERIC,
+    champion_mastery_points BIGINT,
+    qualifying_top_games INTEGER NOT NULL DEFAULT 0,
+    top_play_rate NUMERIC,
     experience_passed BOOLEAN NOT NULL DEFAULT false,
     eligible BOOLEAN NOT NULL DEFAULT false,
     selected BOOLEAN NOT NULL DEFAULT false,
@@ -357,6 +364,24 @@ ALTER TABLE candidate_evaluations
     ADD COLUMN IF NOT EXISTS platform_code TEXT;
 ALTER TABLE candidate_evaluations
     ADD COLUMN IF NOT EXISTS routing_region TEXT;
+ALTER TABLE candidate_evaluations
+    ADD COLUMN IF NOT EXISTS champion_mastery_points BIGINT;
+ALTER TABLE candidate_evaluations
+    ADD COLUMN IF NOT EXISTS qualifying_top_games INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE candidate_evaluations
+    ADD COLUMN IF NOT EXISTS top_play_rate NUMERIC;
+
+-- Generic names power all supported champions. Keep the original Kayle columns
+-- populated as compatibility aliases for existing SQL notebooks and views.
+UPDATE candidate_evaluations
+SET champion_mastery_points=COALESCE(champion_mastery_points, kayle_mastery_points),
+    qualifying_top_games=CASE
+        WHEN qualifying_top_games=0 THEN qualifying_kayle_top_games
+        ELSE qualifying_top_games END,
+    top_play_rate=COALESCE(top_play_rate, kayle_top_play_rate)
+WHERE champion_mastery_points IS NULL
+   OR (qualifying_top_games=0 AND qualifying_kayle_top_games<>0)
+   OR top_play_rate IS NULL;
 
 ALTER TABLE rank_snapshots
     ADD COLUMN IF NOT EXISTS platform_code TEXT;
@@ -777,12 +802,19 @@ CREATE TABLE IF NOT EXISTS target_player_matches (
     rank_snapshot_at TIMESTAMPTZ,
     role_source TEXT NOT NULL,
     role_ambiguous BOOLEAN NOT NULL DEFAULT false,
+    target_champion_id INTEGER NOT NULL DEFAULT 10,
     PRIMARY KEY (run_id, puuid, match_id),
     FOREIGN KEY (match_id, participant_id)
         REFERENCES participants(match_id, participant_id) ON DELETE CASCADE
 );
 
 ALTER TABLE target_player_matches ADD COLUMN IF NOT EXISTS platform_code TEXT;
+ALTER TABLE target_player_matches
+    ADD COLUMN IF NOT EXISTS target_champion_id INTEGER NOT NULL DEFAULT 10;
+UPDATE target_player_matches AS t
+SET target_champion_id=r.target_champion_id
+FROM collection_runs AS r
+WHERE t.run_id=r.run_id AND t.target_champion_id<>r.target_champion_id;
 UPDATE target_player_matches AS t
 SET platform_code=upper(m.platform_id)
 FROM matches AS m
