@@ -173,8 +173,8 @@ def _save_evaluation(conn: Any, row: dict[str, Any]) -> None:
           (%(run_id)s,%(puuid)s,%(discovery_source)s,%(source_region)s,%(source_position)s,
            %(platform_code)s,%(routing_region)s,
            %(tier)s,%(division)s,%(league_points)s,
-           %(champion_mastery_points)s,%(ranked_games_in_window)s,
-           %(qualifying_top_games)s,%(top_play_rate)s,
+           %(legacy_kayle_mastery_points)s,%(ranked_games_in_window)s,
+           %(legacy_qualifying_kayle_top_games)s,%(legacy_kayle_top_play_rate)s,
            %(champion_mastery_points)s,%(qualifying_top_games)s,%(top_play_rate)s,
            %(experience_passed)s,%(eligible)s,false,0,%(selection_reason)s)
         ON CONFLICT (run_id, puuid) DO UPDATE SET
@@ -334,6 +334,16 @@ def evaluate_candidates(
             "qualifying_top_games": len(qualifying),
             "top_play_rate": (
                 len(qualifying) / ranked_in_window if ranked_in_window else None
+            ),
+            "legacy_kayle_mastery_points": (
+                mastery_points if spec.key == "kayle" else None
+            ),
+            "legacy_qualifying_kayle_top_games": (
+                len(qualifying) if spec.key == "kayle" else 0
+            ),
+            "legacy_kayle_top_play_rate": (
+                (len(qualifying) / ranked_in_window if ranked_in_window else None)
+                if spec.key == "kayle" else None
             ),
             "experience_passed": experience_passed,
             "eligible": eligible,
